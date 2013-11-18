@@ -1,0 +1,9 @@
+
+This repository will hold a Python module to control the "McCrypt" LED display.
+
+
+http://www.conrad.de/ce/de/product/590996/LED-Laufschrift-mit-Fernbedienung-Rot-Gelb-Gruen
+
+Protocol documentation can be found here:
+
+http://www.maplin.co.uk/media/pdfs/N00GA_technical_manual.pdf
