@@ -1,6 +1,6 @@
 #! /usr/bin/env python
 
-from led_display import LedDisplay
+from LedDisplay import LedDisplay
 
 import sys, time
 
@@ -365,7 +365,25 @@ def main():
 
     ledz = LedDisplay(device, noisy = True)
 
-    temp_rv(ledz)
+    #  0   1  16  17  32  33  48  49
+    #  2   3  18  19  34  35  50  51
+    #  4   5  20  21  36  37  52  53
+    #  6   7  22  23  38  39  54  55
+    #  8   9  24  25  40  41  56  57
+    # 10  11  26  27  42  43  58  59
+    # 12  13  28  29  44  45  60  61
+    # --  --  --  --  --  --  --  --
+
+    # 00110101 '5': zwart oranje groen groen
+    # 01010101 'U': groen  groen groen groen
+    # 01001010 'J': groen  zwart rood  rood
+
+    ledz.setGraphicsBlock("A", 1, "RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR" + "GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG" + 5 * "OOOOOOOOBBBBBBGGBBBBBBBBOOOOOOOO")
+
+    ledz.setSchedule("A", "A")
+    ledz.send("<L1><PA><FP><MA><WC><FK>[A] (<GA1>)")
+
+    ledz.close()
 
     del ledz
 

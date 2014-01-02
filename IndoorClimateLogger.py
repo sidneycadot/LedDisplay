@@ -1,7 +1,7 @@
 #! /usr/bin/env python
 
 import sys
-from led_display import LedDisplay
+from LedDisplay import LedDisplay
 
 def update_loop(ledz):
 

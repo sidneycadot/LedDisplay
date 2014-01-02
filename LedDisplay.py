@@ -1,8 +1,6 @@
-# -*- coding: utf-8 -*-
+# Python module for the AM03127 (a.k.a. AM004-03127) LED display module.
 
-# AM03127 aka AM004-03127
-
-#device has 16 elements of 8 rows x 5 columns == 8 rows x 80 columns
+# The device has 16 elements of 7 rows x 5 columns == 7 rows x 80 columns
 
 import serial, operator, datetime
 
@@ -14,6 +12,8 @@ class CommunicationError(Exception):
         return repr(self.value)
 
 class LedDisplay(object):
+
+    DEFAULT_RETRY = 3
 
     @staticmethod
     def __checkDeviceId(deviceId):
@@ -53,6 +53,18 @@ class LedDisplay(object):
             return brightness
         raise ValueError
 
+    @staticmethod
+    def __checkGraphicsPage(graphicsPage):
+        if isinstance(graphicsPage, str) and (len(graphicsPage) == 1) and ("A" <= graphicsPage <= "P"):
+            return graphicsPage
+        raise ValueError("%s is not a valid graphicsPage." % graphicsPage)
+
+    @staticmethod
+    def __checkGraphicsBlock(graphicsBlock):
+        if isinstance(graphicsBlock, int) and (1 <= graphicsBlock <= 8):
+            return graphicsBlock
+        raise ValueError("%s is not a valid graphics block." % graphicsBlock)
+
     def __init__(self, device, device_id = 1, timeout = 1.0, noisy = False):
 
         self._device    = device
@@ -77,10 +89,14 @@ class LedDisplay(object):
         if self._noisy:
             print "[%s] closed port." % self._device
 
-    def send_raw(self, command, max_retry = 3):
-        """This handles commands that have a checksum and commands that don't."""
+    def send(self, data_packet, max_retry = DEFAULT_RETRY):
+        """Assemble standard packet and send command."""
+        checksum = reduce(operator.__xor__, map(ord, data_packet), 0)
 
-        # Try up to three times...
+        command = "<ID%02X>%s%02X<E>" % (self._device_id, data_packet, checksum)
+
+        # Try up to "max_retry" times...
+
         for i in xrange(max_retry):
             if self._noisy:
                 print "[%s] sending to device: \"%s\"" % (self._device, command)
@@ -93,32 +109,39 @@ class LedDisplay(object):
             response = response + self._port.read(1000) # will timeout
             if self._noisy:
                 print "[%s] WARNING, no ACK received, got \"%s\" instead. Going for retry." % (self._device, response)
+
         # If we get back here, we didn't get an ACK.
-        raise CommunicationError("Unable to send command \"%s\"" % command)
+        raise CommunicationError("Command \"%s\" was not acknowledged." % command)
 
-    def send(self, data_packet, max_retry = 3):
-        """Assemble standard packet and send command."""
-        checksum = reduce(operator.__xor__, map(ord, data_packet), 0)
+    def setDeviceId(self, new_device_id, max_retry = DEFAULT_RETRY):
+        """Paragraph 4.1: ID setting.
+           Note that we cannot use the standard send() routine here. The "set ID" command
+           is special because it lacks an ID number and a checksum."""
 
-        command = "<ID%02X>%s%02X<E>" % (self._device_id, data_packet, checksum)
+        command = "<ID><%02X><E>" % new_device_id
 
-        return self.send_raw(command, max_retry)
+        # Try up to "max_retry" times...
 
-    def setDeviceId(self, new_device_id):
-        """Paragraph 4.1: ID setting"""
-        assert False # TODO: implement and test
-        assert isinstance(new_device_id, int)
-        assert 0 <= new_device_id <= 255
-        # Note: this is a non-standard command, without an ID and checksum. Send using send_raw().
-        command = "<ID>%02X<E>" % self.__checkDeviceId(new_device_id)
-        self.send_raw(command)
-        # If this succeeded, the device ID must be updated.
-        self._device_id = new_device_id
+        for i in xrange(max_retry):
+            if self._noisy:
+                print "[%s] sending to device: \"%s\"" % (self._device, command)
+            self._port.write(command)
+            response = self._port.read(2)
+            if response == ("%02X" % new_device_id):
+                if self._noisy:
+                    print "[%s] received acknowledgement." % self._device
+                return # Success!
+            response = response + self._port.read(1000) # will timeout
+            if self._noisy:
+                print "[%s] WARNING, no acknowledge received, got \"%s\" instead. Going for retry." % (self._device, response)
+
+        # If we get back here, we didn't get an acknowledgement.
+        raise CommunicationError("Command \"%s\" was not acknowledged." % command)
 
     def setRealtimeClock(self, timestamp = None):
         """ Paragraph 4.2.1: Real Time Clock Setting"""
         if timestamp is None:
-            timestamp = datetime.datetime.now()
+            timestamp = datetime.now()
         else:
             assert isinstance(timestamp, datetime.datetime)
 
@@ -142,12 +165,12 @@ class LedDisplay(object):
         """ Paragraph 4.2.3: Sending Schedule"""
 
         if startTime is None:
-            startTime = datetime.datetime(2000, 1, 1)
+            startTime = datetime.datetime(2000, 1, 1, 0, 0, 0)
         else:
             assert isinstance(startTime, datetime.datetime)
 
         if stopTime is None:
-            stopTime = datetime.datetime(2099, 12, 31)
+            stopTime = datetime.datetime(2099, 12, 31, 23, 59, 59)
         else:
             assert isinstance(stopTime, datetime.datetime)
 
@@ -167,9 +190,66 @@ class LedDisplay(object):
         )
         self.send(command)
 
-    def setGraphicsBlock(self, block):
+    def setGraphicsBlock(self, graphicsPage, graphicsBlock, graphics):
         """ Paragraph 4.2.4: Send Graphic Block"""
-        assert False # TODO: implement and test
+
+        # A single Graphics block is 7 rows x 32 columns worth of pixels.
+        # Each pixel can take any of four values, so it takes two bits to specidy a single pixel:
+        #
+        #   00 -> black
+        #   01 -> green
+        #   10 -> red
+        #   11 -> orange
+        #
+        # E.g., to specify 4 horizontal pixels with colors RED, BLACK, ORANGE, RED translates to
+        # binary 10001110, or a byte with value 0x8e.
+
+        # A graphics block is actually specified as an 8-rows x 32 columns image; the last row is not used.
+        # This is the order of the bytes used. Each byte specifies 4 adjacent pixels, as explained above.
+
+        #  0   1  16  17  32  33  48  49
+        #  2   3  18  19  34  35  50  51
+        #  4   5  20  21  36  37  52  53
+        #  6   7  22  23  38  39  54  55
+        #  8   9  24  25  40  41  56  57
+        # 10  11  26  27  42  43  58  59
+        # 12  13  28  29  44  45  60  61
+        # 14  15  30  31  46  47  62  63 --> pixels of this row (row 8) are not used.
+        #
+        # We expect the graphics specified in a string of length 7x32, consisting of the letters "G", "B", "O", "R".
+
+        gr = []
+        for i in xrange(64):
+            px = (i % 2) + (i // 16) * 2
+            # 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1
+            # 2 3 2 3 2 3 2 3 2 3 2 3 2 3 2 3
+            # 4 5 4 5 4 5 4 5 4 5 4 5 4 5 4 5
+            # 6 7 6 7 6 7 6 7 6 7 6 7 6 7 6 7
+            py = (i // 2) % 8
+            # 0 0 1 1 2 2 3 3 4 4 5 5 6 6 7 7
+            # 0 0 1 1 2 2 3 3 4 4 5 5 6 6 7 7
+            # 0 0 1 1 2 2 3 3 4 4 5 5 6 6 7 7
+            # 0 0 1 1 2 2 3 3 4 4 5 5 6 6 7 7
+
+            if py == 7:
+                pixels = "BBBB"
+            else:
+                pixels = graphics[py * 32 + 4 * px:py * 32 + 4 * px + 4]
+
+            v = 0
+            for p in pixels:
+                v *= 4
+                if   p == "G": v += 1
+                elif p == "R": v += 2
+                elif p == "O": v += 3
+
+            gr.append(v)
+
+        print "@@@@@@@@@@@", gr
+        gr = "".join(["%c" % g for g in gr])
+
+        command = "<G%s%d>%s" % (self.__checkGraphicsPage(graphicsPage), self.__checkGraphicsBlock(graphicsBlock), gr)
+        self.send(command)
 
     def deletePage(self, line, page):
         """Paragraph 4.2.5.1: Delete page"""
