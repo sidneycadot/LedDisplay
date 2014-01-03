@@ -1,3 +1,4 @@
+
 # Python module for the AM03127 (a.k.a. AM004-03127) LED display module.
 
 # The device has 16 elements of 7 rows x 5 columns == 7 rows x 80 columns
@@ -64,6 +65,12 @@ class LedDisplay(object):
         if isinstance(graphicsBlock, int) and (1 <= graphicsBlock <= 8):
             return graphicsBlock
         raise ValueError("%s is not a valid graphics block." % graphicsBlock)
+
+    @staticmethod
+    def __checkGraphicsBlock(graphics):
+        if isinstance(graphics, str) and re.match("^[RGBO]{224}$", graphics):
+            return graphics
+        raise ValueError("%s is not a valid graphics specification." % graphics)
 
     def __init__(self, device, device_id = 1, timeout = 1.0, noisy = False):
 
@@ -141,7 +148,7 @@ class LedDisplay(object):
     def setRealtimeClock(self, timestamp = None):
         """ Paragraph 4.2.1: Real Time Clock Setting"""
         if timestamp is None:
-            timestamp = datetime.now()
+            timestamp = datetime.datetime.now()
         else:
             assert isinstance(timestamp, datetime.datetime)
 
@@ -160,6 +167,84 @@ class LedDisplay(object):
     def setPageContent(self, content):
         """ Paragraph 4.2.2: Sending Page content"""
         assert False # TODO: implement and test
+
+        # Leading command:
+        #   A immediate             Message will be immediately displayed
+        #   B Xopen                 Image will be shown from center and extend to 4 sides
+        #   C Curtain Up            Image will be shown line by line, bottom to top
+        #   D Curtain Down          Image will be shown line by line, top to bottom
+        #   E Scroll Left           Image will be scrolled from Right to Left
+        #   F Scroll Right          Image will be scrolled from Left to Right
+        #   G Vopen
+        #   H Hopen
+        #   I Scroll Up
+        #   J Scroll Down
+        #   K Hold
+        #   L Snow
+        #   M Twinkle
+        #   N Block Move
+        #   P Random
+        #   Q Pen writing 'Hello World'
+        #   R Pen writing 'Welcome'
+        #   S Pen writing 'Amplus'
+        #
+        # Lagging command:
+        #   A immediate             Message will be immediately displayed
+        #   B Xopen                 Image will be shown from center and extend to 4 sides
+        #   C Curtain Up            Image will be shown line by line, bottom to top
+        #   D Curtain Down          Image will be shown line by line, top to bottom
+        #   E Scroll Left           Image will be scrolled from Right to Left
+        #   F Scroll Right          Image will be scrolled from Left to Right
+        #   G Vopen
+        #   H Hopen
+        #   I Scroll Up
+        #   J Scroll Down
+        #   K Hold
+        #
+        # 4.2.2.7 Message Directives:
+        #
+        # 4.2.2.7.1 Font color of following characters
+        #
+        #     <AA> font size 5x7 (Normal)
+        #     <AB> font size 6x7 (Bold)
+        #     <AC> font size 4x7 (Narrow)
+        #     <AD> font size 7x13 (Top half)
+        #     <AE> font size 7x13 (Bottom half)
+        #     <AF> font size 6x8 (Top part)
+        #     <AG> etc -- not interpreted as directives.
+        #
+        # 4.2.2.7.2 Bell
+        #
+        #     <BA>  0.5 seconds
+        #     <BB>  1.0 seconds
+        #      ..
+        #     <BZ> 13.0 seconds
+        #
+        # 4.2.2.7.3 Color of the following characters
+        #
+        #     <CA> red    foreground, black  background (spec says: dim red)
+        #     <CB> red    foreground, black  background
+        #     <CC> red    foreground, black  background (spec says: bright red)
+        #     <CD> green  foreground, black  background (spec says: dim green)
+        #     <CE> green  foreground, black  background
+        #     <CF> green  foreground, black  background (spec says: bright green)
+        #     <CG> orange foreground, black  background (spec says: dim orange)
+        #     <CH> orange foreground, black  background
+        #     <CI> orange foreground, black  background (spec says: bright orange)
+        #     <CJ> orange foreground, black  background (spec says: yellow)
+        #     <CK> orange foreground, black  background (spec says: lime)
+        #     <CL> black  foreground, red    background
+        #     <CM> black  foreground, green  background
+        #     <CN> black  foreground, orange background
+        #     <CO> orange foreground. green  background
+        #     <CP> red    foreground, green  background (spec says: dim green)
+        #     <CQ> green  foreground, red    background (spec says: dim red)
+
+        #     <CR> "rasta:" 2 lines red, three lines orange, 2 lines green
+        #     <CS> "sparkly": active bits are randomly set to red/orange/green.
+
+        #     <CT>, <CU>, <CV>, <CW>, <CX>, <CY>, <CZ>: red (out-of-spec)
+
 
     def setSchedule(self, schedule, pages, startTime = None, stopTime = None):
         """ Paragraph 4.2.3: Sending Schedule"""
@@ -218,6 +303,8 @@ class LedDisplay(object):
         #
         # We expect the graphics specified in a string of length 7x32, consisting of the letters "G", "B", "O", "R".
 
+        self.__checkGraphics(graphics)
+
         gr = []
         for i in xrange(64):
             px = (i % 2) + (i // 16) * 2
@@ -239,13 +326,11 @@ class LedDisplay(object):
             v = 0
             for p in pixels:
                 v *= 4
-                if   p == "G": v += 1
-                elif p == "R": v += 2
-                elif p == "O": v += 3
+                if p in "GO": v += 1
+                if p == "RO": v += 2
 
             gr.append(v)
 
-        print "@@@@@@@@@@@", gr
         gr = "".join(["%c" % g for g in gr])
 
         command = "<G%s%d>%s" % (self.__checkGraphicsPage(graphicsPage), self.__checkGraphicsBlock(graphicsBlock), gr)
@@ -276,11 +361,19 @@ class LedDisplay(object):
         command = "<B%s>" % self.__checkBrightness(brightness)
         self.send(command)
 
-    def changeFactoryDefaultEuropeanCharacterTable(self):
+    def changeFactoryDefaultEuropeanCharacterTable(self, fontSelect, fontEntry, fontData):
         """Paragraph 4.2.8: Change factory default European char table"""
-        assert False # TODO: implement and test
+        # All alphabets use all the 8 bits. The difference is in how many places the column pointer is progressed.
+        #
+        # The "A" (normal) alphabet increases the column index by 6. The glyph takes up the 5 leftmost bits, by convention.
+        # The "B" (wide)   alphabet increases the column index by 7. The glyph takes up the 6 leftmost bits, by convention.
+        # The "C" (tight)  alphabet increases the column index by 5. The glyph takes up the 4 leftmost bits, by convention.
 
-    def setFactoryDefault(self):
+        assert len(fontData) == 8
+        command = "<F%s%02X>%s" % (fontSelect, fontEntry, fontData)
+        self.send(command)
+
+    def recallFactoryDefaultEuropeanCharacterTable(self):
         """Paragraph 4.2.9: Recall factory default European char table"""
         command = "<DU>"
         self.send(command)

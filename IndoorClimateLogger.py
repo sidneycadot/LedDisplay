@@ -11,6 +11,7 @@ def update_loop(ledz):
     temp_arr = []
 
     while True:
+
         line = raw_input()
         print ">>", line
         (timestamp, rv, temp) = line.split()
