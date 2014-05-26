@@ -1,9 +1,23 @@
 
 This repository will hold a Python module to control the "McCrypt" LED display.
 
-
 http://www.conrad.de/ce/de/product/590996/LED-Laufschrift-mit-Fernbedienung-Rot-Gelb-Gruen
 
 Protocol documentation can be found here:
 
 http://www.maplin.co.uk/media/pdfs/N00GA_technical_manual.pdf
+
+This is what Linux shows when inserting the USB plug:
+
+[604738.364856] usb 1-3: new full-speed USB device number 8 using xhci_hcd
+[604738.382374] usb 1-3: New USB device found, idVendor=10c4, idProduct=ea60
+[604738.382377] usb 1-3: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+[604738.382379] usb 1-3: Product: CP2102 USB to UART Bridge Controller
+[604738.382380] usb 1-3: Manufacturer: Silicon Labs
+[604738.382381] usb 1-3: SerialNumber: 0001
+[604738.383219] cp210x 1-3:1.0: cp210x converter detected
+[604738.549278] usb 1-3: reset full-speed USB device number 8 using xhci_hcd
+[604738.565775] xhci_hcd 0000:00:14.0: xHCI xhci_drop_endpoint called with disabled ep ffff88014f6658c0
+[604738.565776] xhci_hcd 0000:00:14.0: xHCI xhci_drop_endpoint called with disabled ep ffff88014f665880
+[604738.566170] usb 1-3: cp210x converter now attached to ttyUSB1
+

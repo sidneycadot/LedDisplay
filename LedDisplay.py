@@ -165,7 +165,17 @@ class LedDisplay(object):
         self.send(command)
 
     def setPageContent(self, content):
-        """ Paragraph 4.2.2: Sending Page content"""
+        """
+        Paragraph 4.2.2: Sending Page content
+        Format: <Ln><Pn><FX><MX><WX><FY>...message...
+        Ln Line
+        Pn Page
+        FX leading command
+        MX display method while waiting
+        WX wait
+        FY lagging effect
+        """
+
         assert False # TODO: implement and test
 
         # Leading command:

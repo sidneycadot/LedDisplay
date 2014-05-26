@@ -14,7 +14,7 @@ def update_loop(ledz):
 
         line = raw_input()
         print ">>", line
-        (timestamp, rv, temp) = line.split()
+        (timestamp, rv, temp) = line.split()[:3]
 
         rv = float(rv)
         temp = float(temp)
