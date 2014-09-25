@@ -7,86 +7,78 @@ import serial, operator, datetime
 
 class CommunicationError(Exception):
     """This exception is raised if a communication error is detected."""
-    def __init__(self, value):
-        self.value = value
-    def __str__(self):
-        return repr(self.value)
+    def __init__(self, *args, **kwargs):
+        super(CommunicationError, self).__init__(*args, **kwargs)
 
 class LedDisplay(object):
 
     DEFAULT_RETRY = 3
 
     @staticmethod
-    def __checkDeviceId(deviceId):
+    def _checkDeviceId(deviceId):
         if isinstance(deviceId, int) and (1 <= deviceId <= 8):
             return deviceId
-        raise ValueError("%s is not a valid device ID." % deviceId)
+        raise ValueError("{} is not a valid device ID.".format(deviceId))
 
     @staticmethod
-    def __checkSchedule(schedule):
+    def _checkSchedule(schedule):
         if isinstance(schedule, str) and (len(schedule) == 1) and ("A" <= schedule <= "E"):
             return schedule
-        raise ValueError("%s is not a valid schedule." % schedule)
+        raise ValueError("{} is not a valid schedule.".format(schedule))
 
     @staticmethod
-    def __checkPage(page):
+    def _checkPage(page):
         if isinstance(page, str) and (len(page) == 1) and ("A" <= page <= "E"):
             return page
-        raise ValueError("%s is not a valid page." % page)
+        raise ValueError("{} is not a valid page.".format(page))
 
     @staticmethod
-    def __checkSchedulePages(schedulePages):
+    def _checkSchedulePages(schedulePages):
         if isinstance(schedulePages, str) and (len(schedulePages) <= 31):
             for page in schedulePages:
-                LedDisplay.__checkPage(page)
+                LedDisplay._checkPage(page)
             return schedulePages
-        raise ValueError("%s is not a valid page schedule." % schedulePages)
+        raise ValueError("{} is not a valid page schedule.".format(schedulePages))
 
     @staticmethod
-    def __checkLine(line):
+    def _checkLine(line):
         if isinstance(line, int) and (1 <= line <= 8):
             return line
-        raise ValueError("%s is not a valid line." % line)
+        raise ValueError("{} is not a valid line.".format(line))
 
     @staticmethod
-    def __checkBrightness(brightness):
+    def _checkBrightness(brightness):
         if isinstance(brightness, str) and (len(brightness) == 1) and ("A" <= brightness <= "D"):
             return brightness
-        raise ValueError
+        raise ValueError("{} is not a valid brightness.".format(brightness))
 
     @staticmethod
-    def __checkGraphicsPage(graphicsPage):
+    def _checkGraphicsPage(graphicsPage):
         if isinstance(graphicsPage, str) and (len(graphicsPage) == 1) and ("A" <= graphicsPage <= "P"):
             return graphicsPage
-        raise ValueError("%s is not a valid graphicsPage." % graphicsPage)
+        raise ValueError("{} is not a valid graphicsPage.".format(graphicsPage))
 
     @staticmethod
-    def __checkGraphicsBlock(graphicsBlock):
-        if isinstance(graphicsBlock, int) and (1 <= graphicsBlock <= 8):
-            return graphicsBlock
-        raise ValueError("%s is not a valid graphics block." % graphicsBlock)
-
-    @staticmethod
-    def __checkGraphicsBlock(graphics):
+    def _checkGraphicsBlock(graphics):
         if isinstance(graphics, str) and re.match("^[RGBO]{224}$", graphics):
             return graphics
-        raise ValueError("%s is not a valid graphics specification." % graphics)
+        raise ValueError("{} is not a valid graphics block.".format(graphics))
 
     def __init__(self, device, device_id = 1, timeout = 1.0, noisy = False):
 
         self._device    = device
-        self._device_id = self.__checkDeviceId(device_id)
+        self._device_id = self._checkDeviceId(device_id)
         self._timeout   = timeout
         self._noisy     = noisy
         self._port      = serial.Serial(self._device, 9600, serial.EIGHTBITS, serial.PARITY_NONE, serial.STOPBITS_ONE, self._timeout, False, False)
 
         if self._noisy:
-            print "[%s] opened port." % self._device
+            print "[{}] opened port.".format(self._device)
 
     def __del__(self):
 
         if self._port is not None:
-            print "WARNING: __del__ method of class LedDisplay closes port. Please use explicit close() method!"
+            print "WARNING: __del__ method of class LedDisplay closes port. Please use explicit close() method."
             self.close()
 
     def close(self):
@@ -94,7 +86,7 @@ class LedDisplay(object):
         self._port.close()
         self._port = None
         if self._noisy:
-            print "[%s] closed port." % self._device
+            print "[{}] closed port.".format(self._device)
 
     def send(self, data_packet, max_retry = DEFAULT_RETRY):
         """Assemble standard packet and send command."""
@@ -106,19 +98,19 @@ class LedDisplay(object):
 
         for i in xrange(max_retry):
             if self._noisy:
-                print "[%s] sending to device: \"%s\"" % (self._device, command)
+                print "[{}] sending to device: \"{}\"".format(self._device, command)
             self._port.write(command)
             response = self._port.read(3)
             if response == "ACK":
                 if self._noisy:
-                    print "[%s] received acknowledgement." % self._device
+                    print "[{}] received acknowledgement.".format(self._device)
                 return # Success!
             response = response + self._port.read(1000) # will timeout
             if self._noisy:
-                print "[%s] WARNING, no ACK received, got \"%s\" instead. Going for retry." % (self._device, response)
+                print "[{}] WARNING, no ACK received, got \"{}\" instead. Going for retry.".format(self._device, response)
 
         # If we get back here, we didn't get an ACK.
-        raise CommunicationError("Command \"%s\" was not acknowledged." % command)
+        raise CommunicationError("Command \"{}\" was not acknowledged.".format(command))
 
     def setDeviceId(self, new_device_id, max_retry = DEFAULT_RETRY):
         """Paragraph 4.1: ID setting.
@@ -131,19 +123,19 @@ class LedDisplay(object):
 
         for i in xrange(max_retry):
             if self._noisy:
-                print "[%s] sending to device: \"%s\"" % (self._device, command)
+                print "[{}] sending to device: \"{}\"".format(self._device, command)
             self._port.write(command)
             response = self._port.read(2)
             if response == ("%02X" % new_device_id):
                 if self._noisy:
-                    print "[%s] received acknowledgement." % self._device
+                    print "[{}] received acknowledgement.".format(self._device)
                 return # Success!
             response = response + self._port.read(1000) # will timeout
             if self._noisy:
-                print "[%s] WARNING, no acknowledge received, got \"%s\" instead. Going for retry." % (self._device, response)
+                print "[{}] WARNING, no acknowledge received, got \"{}\" instead. Going for retry.".format(self._device, response)
 
         # If we get back here, we didn't get an acknowledgement.
-        raise CommunicationError("Command \"%s\" was not acknowledged." % command)
+        raise CommunicationError("Command \"{}\" was not acknowledged.".format(command))
 
     def setRealtimeClock(self, timestamp = None):
         """ Paragraph 4.2.1: Real Time Clock Setting"""
@@ -270,7 +262,7 @@ class LedDisplay(object):
             assert isinstance(stopTime, datetime.datetime)
 
         command = "<T%s>%02d%02d%02d%02d%02d%02d%02d%02d%02d%02d%s" % (
-            self.__checkSchedule(schedule),
+            self._checkSchedule(schedule),
             startTime.year % 100,
             startTime.month,
             startTime.day,
@@ -281,7 +273,7 @@ class LedDisplay(object):
             stopTime.day,
             stopTime.hour,
             stopTime.minute,
-            self.__checkSchedulePages(pages)
+            self._checkSchedulePages(pages)
         )
         self.send(command)
 
@@ -289,7 +281,7 @@ class LedDisplay(object):
         """ Paragraph 4.2.4: Send Graphic Block"""
 
         # A single Graphics block is 7 rows x 32 columns worth of pixels.
-        # Each pixel can take any of four values, so it takes two bits to specidy a single pixel:
+        # Each pixel can take any of four values, so it takes two bits to specify a single pixel:
         #
         #   00 -> black
         #   01 -> green
@@ -311,9 +303,10 @@ class LedDisplay(object):
         # 12  13  28  29  44  45  60  61
         # 14  15  30  31  46  47  62  63 --> pixels of this row (row 8) are not used.
         #
-        # We expect the graphics specified in a string of length 7x32, consisting of the letters "G", "B", "O", "R".
+        # We expect the graphics specified in a string of length 7x32, consisting of the letters "G", "B", "O", "R",
+        # for Green, Black, Orange, and Red, respectively.
 
-        self.__checkGraphics(graphics)
+        self._checkGraphics(graphics)
 
         gr = []
         for i in xrange(64):
@@ -343,17 +336,17 @@ class LedDisplay(object):
 
         gr = "".join(["%c" % g for g in gr])
 
-        command = "<G%s%d>%s" % (self.__checkGraphicsPage(graphicsPage), self.__checkGraphicsBlock(graphicsBlock), gr)
+        command = "<G%s%d>%s" % (self._checkGraphicsPage(graphicsPage), self._checkGraphicsBlock(graphicsBlock), gr)
         self.send(command)
 
     def deletePage(self, line, page):
         """Paragraph 4.2.5.1: Delete page"""
-        command = "<DL%sP%s>" % (self.__checkLine(line), self.__checkPage(page))
+        command = "<DL%sP%s>" % (self._checkLine(line), self._checkPage(page))
         self.send(command)
 
     def deleteSchedule(self, schedule):
         """Paragraph 4.2.5.2: Delete schedule"""
-        command = "<DT%s>" % self.__checkSchedule(schedule)
+        command = "<DT%s>" % self._checkSchedule(schedule)
         self.send(command)
 
     def deleteAll(self):
@@ -363,17 +356,17 @@ class LedDisplay(object):
 
     def setDefaultRunPage(self, page):
         """Paragraph 4.2.6: Assign a default run page"""
-        command = "<RP%s>" % self.__checkPage(page)
+        command = "<RP%s>" % self._checkPage(page)
         self.send(command)
 
     def setBrightnessLevel(self, brightness):
         """Paragraph 4.2.7: Assign Display Brightness level"""
-        command = "<B%s>" % self.__checkBrightness(brightness)
+        command = "<B%s>" % self._checkBrightness(brightness)
         self.send(command)
 
     def changeFactoryDefaultEuropeanCharacterTable(self, fontSelect, fontEntry, fontData):
         """Paragraph 4.2.8: Change factory default European char table"""
-        # All alphabets use all the 8 bits. The difference is in how many places the column pointer is progressed.
+        # All character sets use all the 8 bits. The difference is in how many places the column pointer is progressed.
         #
         # The "A" (normal) alphabet increases the column index by 6. The glyph takes up the 5 leftmost bits, by convention.
         # The "B" (wide)   alphabet increases the column index by 7. The glyph takes up the 6 leftmost bits, by convention.
