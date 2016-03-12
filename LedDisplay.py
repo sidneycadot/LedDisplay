@@ -3,14 +3,13 @@
 
 # The device has 16 elements of 7 rows x 5 columns == 7 rows x 80 columns
 
-import serial, operator, datetime
+import serial, operator, datetime, functools, logging
 
 class CommunicationError(Exception):
     """This exception is raised if a communication error is detected."""
-    def __init__(self, *args, **kwargs):
-        super(CommunicationError, self).__init__(*args, **kwargs)
+    pass
 
-class LedDisplay(object):
+class LedDisplay:
 
     DEFAULT_RETRY = 3
 
@@ -64,78 +63,88 @@ class LedDisplay(object):
             return graphics
         raise ValueError("{} is not a valid graphics block.".format(graphics))
 
-    def __init__(self, device, device_id = 1, timeout = 1.0, noisy = False):
+    def __init__(self, device, device_id = 1, timeout = 1.0):
 
         self._device    = device
         self._device_id = self._checkDeviceId(device_id)
         self._timeout   = timeout
-        self._noisy     = noisy
         self._port      = serial.Serial(self._device, 9600, serial.EIGHTBITS, serial.PARITY_NONE, serial.STOPBITS_ONE, self._timeout, False, False)
 
-        if self._noisy:
-            print "[{}] opened port.".format(self._device)
+        self.logger = logging.getLogger("LedDisplay")
+
+        self.logger.info("[{}] Opened serial port.".format(self._device))
 
     def __del__(self):
 
         if self._port is not None:
-            print "WARNING: __del__ method of class LedDisplay closes port. Please use explicit close() method."
+            self.logger.error("The__del__ method of class LedDisplay was called while the serial port was still open. Please use explicit close() method.")
             self.close()
 
     def close(self):
         assert self._port is not None
         self._port.close()
         self._port = None
-        if self._noisy:
-            print "[{}] closed port.".format(self._device)
+
+        self.logger.info("[{}] Closed serial port.".format(self._device))
 
     def send(self, data_packet, max_retry = DEFAULT_RETRY):
         """Assemble standard packet and send command."""
-        checksum = reduce(operator.__xor__, map(ord, data_packet), 0)
 
-        command = "<ID%02X>%s%02X<E>" % (self._device_id, data_packet, checksum)
+        checksum = functools.reduce(operator.__xor__, map(ord, data_packet), 0)
 
+        command = "<ID{:02X}>{}{:02X}<E>".format(self._device_id, data_packet, checksum).encode("ASCII")
+
+        expected_response = "ACK".encode("ASCII")
+        
         # Try up to "max_retry" times...
 
-        for i in xrange(max_retry):
-            if self._noisy:
-                print "[{}] sending to device: \"{}\"".format(self._device, command)
-            self._port.write(command)
-            response = self._port.read(3)
-            if response == "ACK":
-                if self._noisy:
-                    print "[{}] received acknowledgement.".format(self._device)
-                return # Success!
-            response = response + self._port.read(1000) # will timeout
-            if self._noisy:
-                print "[{}] WARNING, no ACK received, got \"{}\" instead. Going for retry.".format(self._device, response)
+        for i in range(max_retry):
 
-        # If we get back here, we didn't get an ACK.
-        raise CommunicationError("Command \"{}\" was not acknowledged.".format(command))
+            self.logger.info("[{}] Sending to device: {!r}".format(self._device, command))
+            self._port.write(command)
+
+            response = self._port.read(3)
+
+            if response == expected_response:
+                self.logger.debug("[{}] Received expected response: {!r}.".format(self._device, response))
+                break # Success!
+
+            response = response + self._port.read(1000) # Read garbage, if any (will timeout).
+
+            self.logger.warning("[{}] Received unexpected response: {!r}".format(self._device, response))
+
+        else:
+            # If we get here, we didn't get an ACK after retries.
+            raise CommunicationError("Command {!r} was not acknowledged by device.".format(command))
 
     def setDeviceId(self, new_device_id, max_retry = DEFAULT_RETRY):
         """Paragraph 4.1: ID setting.
            Note that we cannot use the standard send() routine here. The "set ID" command
            is special because it lacks an ID number and a checksum."""
 
-        command = "<ID><%02X><E>" % new_device_id
+        command = "<ID><{:02X}><E>".format(new_device_id).encode("ASCII")
+
+        expected_response = "{:02X}".format(new_device_id).encode("ASCII")
 
         # Try up to "max_retry" times...
 
         for i in xrange(max_retry):
-            if self._noisy:
-                print "[{}] sending to device: \"{}\"".format(self._device, command)
-            self._port.write(command)
-            response = self._port.read(2)
-            if response == ("%02X" % new_device_id):
-                if self._noisy:
-                    print "[{}] received acknowledgement.".format(self._device)
-                return # Success!
-            response = response + self._port.read(1000) # will timeout
-            if self._noisy:
-                print "[{}] WARNING, no acknowledge received, got \"{}\" instead. Going for retry.".format(self._device, response)
 
-        # If we get back here, we didn't get an acknowledgement.
-        raise CommunicationError("Command \"{}\" was not acknowledged.".format(command))
+            self.logger.info("[{}] Sending to device: {!r}".format(self._device, command))
+            self._port.write(command)
+
+            response = self._port.read(2)
+
+            if response == expected_response:
+                self.logger.debug("[{}] Received expected response: {!r}.".format(self._device, response))
+                break # Success!
+
+            response = response + self._port.read(1000) # Read garbage, if any (will timeout).
+            self.logger.warning("[{}] Received unexpected response: {!r}.".format(self._device, response))
+
+        else:
+            # If we get here, we didn't get an acknowledgement.
+            raise CommunicationError("Command {!r} was not acknowledged by device..".format(command))
 
     def setRealtimeClock(self, timestamp = None):
         """ Paragraph 4.2.1: Real Time Clock Setting"""
