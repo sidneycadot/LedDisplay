@@ -282,7 +282,7 @@ def main():
 
         radioPlayer = InternetRadioPlayer(host, port)
 
-        led_device = os.getenv(LED_DEVICE)
+        led_device = os.getenv("LED_DEVICE")
 
         with AudioStreamPlayer("mpg123", ["-"]) as audiostream_player, \
              MetadataProcessor(led_device) as metadata_processor:
