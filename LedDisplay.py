@@ -72,7 +72,7 @@ class LedDisplay:
 
         self.logger = logging.getLogger("LedDisplay")
 
-        self.logger.info("[{}] Opened serial port.".format(self._device))
+        self.logger.debug("[{}] Opened serial port.".format(self._device))
 
     def __del__(self):
 
@@ -85,7 +85,7 @@ class LedDisplay:
         self._port.close()
         self._port = None
 
-        self.logger.info("[{}] Closed serial port.".format(self._device))
+        self.logger.debug("[{}] Closed serial port.".format(self._device))
 
     def send(self, data_packet, max_retry = DEFAULT_RETRY):
         """Assemble standard packet and send command."""
