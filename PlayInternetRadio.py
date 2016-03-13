@@ -122,7 +122,7 @@ class MetadataProcessor:
             led_message = "<L1><PA><FE><MA><WB><FE><AC><CD>{}          <CG><KD> <KT>".format(title)
 
             with LedDisplay(self.led_device) as led_display:
-                ledz.send(led_message)
+                led_display.send(led_message)
 
 class InternetRadioPlayer:
 
@@ -282,7 +282,8 @@ def main():
 
         radioPlayer = InternetRadioPlayer(host, port)
 
-        led_device = None
+        led_device = "/dev/ttyUSB0"
+        #led_device = None
 
         with AudioStreamPlayer("mpg123", ["-"]) as audiostream_player, \
              MetadataProcessor(led_device) as metadata_processor:
