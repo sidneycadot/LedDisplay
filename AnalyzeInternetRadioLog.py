@@ -1,6 +1,8 @@
 #! /usr/bin/env python3
 
-import re
+import re, sys
+
+SIMPLE_ASCII = frozenset(b" !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~")
 
 with open("metadata.log") as f:
     lines = f.readlines()
@@ -14,6 +16,7 @@ prevtimestamp  = None
 trust_timestamp = False
 
 for line in lines:
+
     line = line.rstrip()
 
     if line == "restart":
@@ -30,12 +33,24 @@ for line in lines:
     else:
         timestamp = float("nan")
 
-    metadata  = eval(line[21:]).decode()
+    metadata = eval(line[21:])
+
+    try:
+        metadata = metadata.decode()
+    except:
+        for c in range(256):
+            if c not in SIMPLE_ASCII:
+                bc = bytes([c])
+                bc_replacement = "<{:02x}>".format(c).encode()
+                metadata = metadata.replace(bc, bc_replacement)
+        metadata = metadata.decode()
 
     if prevsongtitle is not None:
         print("{:12.6f} | {:30} | {}".format(timestamp - prevtimestamp, prevartist, prevsongtitle))
 
     match = metadata_regexp.match(metadata)
+    if match is None:
+        print("huh: {!r}".format(metadata))
     assert match is not None
     artist     = match.group(1).strip()
     songtitle  = match.group(2).strip()
