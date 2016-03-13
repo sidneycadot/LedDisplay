@@ -1,6 +1,6 @@
 #! /usr/bin/env python3
 
-import time, socket, re, subprocess, logging, math
+import os, time, socket, re, subprocess, logging, math
 
 from LedDisplay import LedDisplay
 
@@ -77,9 +77,9 @@ class AudioStreamPlayer:
             kilobits_per_second = kilobits / seconds
 
             hms_s = seconds
-            hms_h = math.floor(seconds / 3600.0)
+            hms_h = math.floor(hms_s / 3600.0)
             hms_s -= hms_h * 3600.0
-            hms_m = math.floor(seconds / 60.0)
+            hms_m = math.floor(hms_s / 60.0)
             hms_s -= hms_m * 60.0
 
             self._logger.info("Streamed {:.3f} MB in {}h{:02}m{:06.3f}s ({:.3f} MB/h, {:.6f} kbits/sec)".format(megabytes, hms_h, hms_m, hms_s, megabytes_per_hour, kilobits_per_second))
@@ -282,8 +282,7 @@ def main():
 
         radioPlayer = InternetRadioPlayer(host, port)
 
-        led_device = "/dev/ttyUSB0"
-        #led_device = None
+        led_device = os.getenv(LED_DEVICE)
 
         with AudioStreamPlayer("mpg123", ["-"]) as audiostream_player, \
              MetadataProcessor(led_device) as metadata_processor:
