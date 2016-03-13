@@ -47,17 +47,18 @@ class MP3Player:
 
 class MetadataProcessor:
 
-    def __init__(self, device):
+    def __init__(self, led_device):
+
+        self.led_device = led_device
+
         self.regexp = re.compile("StreamTitle='(.*)';StreamUrl='(.*)';")
-        self.led_display = LedDisplay(device)
-        self.led_display.setBrightnessLevel("A")
-        self.led_display.setSchedule("A", "A")
+
+        ledz = LedDisplay(self.led_device)
+        ledz.setBrightnessLevel("A")
+        ledz.setSchedule("A", "A")
+        ledz.close()
 
         self.logger = logging.getLogger("Metadata")
-
-    def __del__(self):
-
-        self.led_display.close()
 
     def process(self, metadata):
 
@@ -71,7 +72,9 @@ class MetadataProcessor:
 
         message = "<L1><PA><FE><MA><WB><FE><AC><CD>{}          <CG><KD> <KT>".format(title)
 
-        self.led_display.send(message)
+        ledz = LedDisplay(self.led_device)
+        ledz.send(message)
+        ledz.close()
 
 class InternetRadioPlayer:
 
@@ -169,6 +172,8 @@ class InternetRadioPlayer:
 
                 while True:
 
+                    current_time = time.time()
+
                     if len(stream_buffer) >= 1:
 
                         metadata_size = 16 * stream_buffer[0]
@@ -182,7 +187,12 @@ class InternetRadioPlayer:
                                 metadata = stream_buffer[1:1 + metadata_size]
 
                                 if len(metadata) > 0:
-                                    metadata = metadata.rstrip(b"\0")
+
+                                    metadata = bytes(metadata.rstrip(b"\0"))
+
+                                    with open("metadata.log", "a") as f:
+                                        print("{:20.9f} {!r}".format(current_time, metadata), file = f)
+
                                     try:
                                         metadata = metadata.decode()
                                     except:
