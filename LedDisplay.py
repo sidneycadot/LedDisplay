@@ -65,27 +65,37 @@ class LedDisplay:
 
     def __init__(self, device, device_id = 1, timeout = 1.0):
 
+        self._logger = logging.getLogger("LedDisplay {!r}".format(device))
+
         self._device    = device
         self._device_id = self._checkDeviceId(device_id)
         self._timeout   = timeout
-        self._port      = serial.Serial(self._device, 9600, serial.EIGHTBITS, serial.PARITY_NONE, serial.STOPBITS_ONE, self._timeout, False, False)
 
-        self.logger = logging.getLogger("LedDisplay")
+        self._logger.debug("Opening serial port ...")
 
-        self.logger.debug("[{}] Opened serial port.".format(self._device))
+        self._port = serial.Serial(self._device, 9600, serial.EIGHTBITS, serial.PARITY_NONE, serial.STOPBITS_ONE, self._timeout, False, False)
 
     def __del__(self):
 
         if self._port is not None:
-            self.logger.error("The__del__ method of class LedDisplay was called while the serial port was still open. Please use explicit close() method.")
+            self._logger.error("The__del__ method of class LedDisplay was called while the serial port was still open. Please use explicit close() method.")
+            self.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        if self._port is not None:
             self.close()
 
     def close(self):
+
         assert self._port is not None
+
+        self._logger.debug("Closing serial port ...")
+
         self._port.close()
         self._port = None
-
-        self.logger.debug("[{}] Closed serial port.".format(self._device))
 
     def send(self, data_packet, max_retry = DEFAULT_RETRY):
         """Assemble standard packet and send command."""
@@ -95,23 +105,23 @@ class LedDisplay:
         command = "<ID{:02X}>{}{:02X}<E>".format(self._device_id, data_packet, checksum).encode("ASCII")
 
         expected_response = "ACK".encode("ASCII")
-        
+
         # Try up to "max_retry" times...
 
         for i in range(max_retry):
 
-            self.logger.info("[{}] Sending to device: {!r}".format(self._device, command))
+            self._logger.info("Sending to device: {!r}".format(command))
             self._port.write(command)
 
             response = self._port.read(3)
 
             if response == expected_response:
-                self.logger.debug("[{}] Received expected response: {!r}.".format(self._device, response))
+                self._logger.debug("Received expected response: {!r}.".format(response))
                 break # Success!
 
             response = response + self._port.read(1000) # Read garbage, if any (will timeout).
 
-            self.logger.warning("[{}] Received unexpected response: {!r}".format(self._device, response))
+            self._logger.warning("Received unexpected response: {!r}".format(response))
 
         else:
             # If we get here, we didn't get an ACK after retries.
@@ -128,23 +138,23 @@ class LedDisplay:
 
         # Try up to "max_retry" times...
 
-        for i in xrange(max_retry):
+        for i in range(max_retry):
 
-            self.logger.info("[{}] Sending to device: {!r}".format(self._device, command))
+            self._logger.info("Sending to device: {!r}".format(command))
             self._port.write(command)
 
             response = self._port.read(2)
 
             if response == expected_response:
-                self.logger.debug("[{}] Received expected response: {!r}.".format(self._device, response))
+                self._logger.debug("Received expected response: {!r}.".format(response))
                 break # Success!
 
             response = response + self._port.read(1000) # Read garbage, if any (will timeout).
-            self.logger.warning("[{}] Received unexpected response: {!r}.".format(self._device, response))
+            self._logger.warning("Received unexpected response: {!r}.".format(response))
 
         else:
             # If we get here, we didn't get an acknowledgement.
-            raise CommunicationError("Command {!r} was not acknowledged by device..".format(command))
+            raise CommunicationError("Command {!r} was not acknowledged by device.".format(command))
 
     def setRealtimeClock(self, timestamp = None):
         """ Paragraph 4.2.1: Real Time Clock Setting"""
@@ -318,7 +328,7 @@ class LedDisplay:
         self._checkGraphics(graphics)
 
         gr = []
-        for i in xrange(64):
+        for i in range(64):
             px = (i % 2) + (i // 16) * 2
             # 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1
             # 2 3 2 3 2 3 2 3 2 3 2 3 2 3 2 3
