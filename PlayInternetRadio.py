@@ -86,18 +86,18 @@ class AudioStreamPlayer:
 
             self._last_report_time = current_time
 
-class MetadataProcessor:
+class MetadataLedDisplayDriver:
 
     def __init__(self, led_device):
 
-        self.logger = logging.getLogger("metadata")
+        self._logger = logging.getLogger("MetadataLedDisplayDriver")
 
-        self.led_device = led_device
+        self._led_device = led_device
 
-        self.regexp = re.compile("StreamTitle='(.*)';StreamUrl='(.*)';")
+        self._regexp = re.compile("StreamTitle='(.*)';StreamUrl='(.*)';")
 
-        if led_device is not None:
-            with LedDisplay(self.led_device) as led_display:
+        if self._led_device is not None:
+            with LedDisplay(self._led_device) as led_display:
                 led_display.setBrightnessLevel("A")
                 led_display.setSchedule("A", "A")
 
@@ -107,160 +107,173 @@ class MetadataProcessor:
     def __exit__(self, exc_type, exc_value, traceback):
         pass
 
-    def process(self, metadata):
+    def process(self, current_time, metadata):
 
-        match = self.regexp.match(metadata)
+        if len(metadata) == 0:
+            return
+
+        match = self._regexp.match(metadata)
 
         title = match.group(1)
         title = title.rstrip()
         title = title.replace('  ', ' ')
 
-        self.logger.info("Stream title: {!r}".format(title))
+        self._logger.info("Stream title: {!r}".format(title))
 
-        if self.led_device is not None:
+        if self._led_device is not None:
 
             led_message = "<L1><PA><FE><MA><WB><FE><AC><CD>{}          <CG><KD> <KT>".format(title)
 
-            with LedDisplay(self.led_device) as led_display:
+            with LedDisplay(self._led_device) as led_display:
                 led_display.send(led_message)
+
+class MetadataFileWriter:
+
+    def __init__(self, filename):
+
+        self._logger = logging.getLogger("MetadataFileWriter")
+
+        self._filename = filename
+
+        with open(self._filename, "a") as f:
+            print("restart", file = f)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        pass
+
+    def process(self, current_time, metadata):
+
+        if len(metadata) == 0:
+            return
+
+        with open(self._filename, "a") as f:
+            print("{:20.9f} {}".format(current_time, metadata), file = f)
 
 class InternetRadioPlayer:
 
-    def __init__(self, host, port):
+    def __init__(self, host, port, path):
 
-        self.logger = logging.getLogger("{}:{}".format(host, port))
+        self._logger = logging.getLogger("{}:{}".format(host, port))
 
-        self.host = host
-        self.port = port
+        self._host = host
+        self._port = port
+        self._path = path
 
         self.audiodata_signal = Signal()
         self.metadata_signal = Signal()
 
     def play(self):
 
-        MAX_PACKET_SIZE = 2048 # bigger than 1 packet.
+        MAX_PACKET_SIZE = 2048 # larger than 1 regular IP packet.
 
-        address = (self.host, self.port)
+        address = (self._host, self._port)
 
         stream_socket = socket.create_connection(address)
 
         try:
 
-            request = "GET / HTTP/1.0\r\nHost:{}\r\nIcy-MetaData: 1\r\nAccept: */*\r\n\r\n".format(self.host).encode()
+            request = "GET {} HTTP/1.0\r\nHost:{}\r\nIcy-MetaData: 1\r\nAccept: */*\r\n\r\n".format(self._path, self._host).encode()
 
-            self.logger.info("Sending HTTP request: {!r} ...".format(request))
+            self._logger.info("Sending HTTP request: {!r} ...".format(request))
 
             stream_socket.send(request)
 
             # Read the response header (HTTP-like).
 
-            self.logger.debug("Parsing HTTP response.")
-
             stream_buffer = bytearray()
+
+            in_header = True
             icy_metadata_interval = None
             icy_content_type = None
 
-            while True:
+            while True: # Loop to read more data.
 
-                idx = stream_buffer.find(b"\r\n")
+                while True: # loop to process available bytes.
 
-                if idx < 0:
-                    # Read more data.
-                    packet = stream_socket.recv(MAX_PACKET_SIZE)
-                    stream_buffer.extend(packet)
-                    # Interpret header
-                    continue
+                    if in_header:
 
-                # Extract header line from stream buffer and convert it to a string.
-                headerline = stream_buffer[:idx].decode()
+                        idx = stream_buffer.find(b"\r\n")
 
-                # Discard header line and CR/LF from stream buffer.
-                del stream_buffer[:idx + 2]
+                        if idx < 0:
+                            break # CR/LF not found. We need to read more data to proceed.
 
-                self.logger.info("Received response header: {!r}".format(headerline))
+                        # Found CR/LF ; extract and process the line.
 
-                if headerline.startswith("icy-metaint:"):
-                    assert icy_metadata_interval is None
-                    icy_metadata_interval = int(headerline[12:])
-                elif headerline.startswith("content-type:"):
-                    assert icy_content_type is None
-                    icy_content_type = headerline[13:]
-                elif len(headerline) == 0:
-                    # Empty line terminates the header!
-                    break
+                        # Extract header line from stream buffer and convert it to a string.
+                        headerline = stream_buffer[:idx].decode()
 
-            assert icy_metadata_interval is not None
-            assert icy_content_type      is not None
+                        # Discard header line and CR/LF characters from the stream buffer.
+                        del stream_buffer[:idx + 2]
 
-            # Stream MP3 data, interleaved with ICY metadata
+                        self._logger.info("Received response header: {!r}".format(headerline))
 
-            self.logger.debug("Interpret interleaved audio / ICY data.")
+                        if headerline.startswith("icy-metaint:"):
+                            assert icy_metadata_interval is None
+                            icy_metadata_interval = int(headerline[12:])
+                        elif headerline.startswith("content-type:"):
+                            assert icy_content_type is None
+                            icy_content_type = headerline[13:]
+                        elif len(headerline) == 0:
+                            # Empty line terminates the header!
+                            assert icy_metadata_interval is not None
+                            assert icy_content_type is not None
+                            stream_audio_bytes_until_metadata = icy_metadata_interval
+                            in_header = False
+                    elif stream_audio_bytes_until_metadata > 0:
 
-            while True:
+                        # We should stream audio data.
+                        if len(stream_buffer) == 0:
+                            break # No data available for streaming. Need to read more data.
 
-                self.logger.debug("Read audio stream ({} bytes) ...".format(icy_metadata_interval))
+                        # Determine how mouch of the buffer we should stream.
+                        stream_audio_bytes = min(stream_audio_bytes_until_metadata, len(stream_buffer))
 
-                stream_mp3_bytes_until_metadata = icy_metadata_interval
+                        # Emit the data as audio.
+                        self.audiodata_signal.emit(stream_buffer[:stream_audio_bytes])
 
-                while stream_mp3_bytes_until_metadata > 0:
+                        # Remove the audio stream data from the stream buffer.
+                        del stream_buffer[:stream_audio_bytes]
 
-                    if len(stream_buffer) > 0:
-
-                        stream_mp3_bytes = min(stream_mp3_bytes_until_metadata, len(stream_buffer))
-
-                        self.audiodata_signal.emit(stream_buffer[:stream_mp3_bytes])
-
-                        del stream_buffer[:stream_mp3_bytes]
-                        stream_mp3_bytes_until_metadata -= stream_mp3_bytes
-
+                        # Decrease the number of bytes until the next metadata chunk.
+                        stream_audio_bytes_until_metadata -= stream_audio_bytes
                     else:
+                        # We are expecting a metadata chunk.
+                        current_time = time.time()
 
                         packet = stream_socket.recv(MAX_PACKET_SIZE)
                         stream_buffer.extend(packet)
 
-                # Read ICY metadata
-
-                self.logger.debug("Read ICY metadata ...")
-
-                while True:
-
-                    current_time = time.time()
-
-                    if len(stream_buffer) >= 1:
+                        if len(stream_buffer) == 0:
+                            break # We need more data -- at least the metadata chunk length byte.
 
                         metadata_size = 16 * stream_buffer[0]
 
-                        if len(stream_buffer) >= 1 + metadata_size:
+                        if len(stream_buffer) < 1 + metadata_size:
+                            break # We need more data; metadata chunk incomplete.
 
-                            # We have a complete metadata chunk.
+                        # We have a complete metadata chunk.
+                        metadata = stream_buffer[1:1 + metadata_size]
 
-                            metadata = stream_buffer[1:1 + metadata_size]
+                        metadata = metadata.rstrip(b"\0").decode(errors = "replace")
 
-                            if len(metadata) > 0:
+                        self.metadata_signal.emit(current_time, metadata)
 
-                                metadata = bytes(metadata.rstrip(b"\0"))
+                        # Discard the metadata size byte as well as the metadata itself.
+                        del stream_buffer[:1 + metadata_size]
 
-                                with open("metadata.log", "a") as f:
-                                    print("{:20.9f} {!r}".format(current_time, metadata), file = f)
+                        # Next traversal of data process loop will need to emit audio data
+                        stream_audio_bytes_until_metadata = icy_metadata_interval
 
-                                try:
-                                    metadata = metadata.decode()
-                                except:
-                                    self.logger.error("metadata decode error: {!r}".format(metadata))
-                                    metadata = None
+                # Read more data.
+                packet = stream_socket.recv(MAX_PACKET_SIZE)
+                stream_buffer.extend(packet)
 
-                                if metadata is not None:
-                                    self.metadata_signal.emit(metadata)
-
-                            # Discard the metadata chunk, and leave metadata parsing loop.
-
-                            del stream_buffer[:1 + metadata_size]
-                            break
-
-                    # We need to read more metadata.
-
-                    packet = stream_socket.recv(MAX_PACKET_SIZE)
-                    stream_buffer.extend(packet)
+        #except BaseException as exception:
+        #    self._logger.exception(exception)
+        #    raise
 
         finally:
 
@@ -279,16 +292,19 @@ def main():
         #host = "pcaac.pinguinradio.com"
 
         port = 80
+        path = "/"
 
-        radioPlayer = InternetRadioPlayer(host, port)
+        radioPlayer = InternetRadioPlayer(host, port, path)
 
         led_device = os.getenv("LED_DEVICE")
 
-        with AudioStreamPlayer("mpg123", ["-"]) as audiostream_player, \
-             MetadataProcessor(led_device) as metadata_processor:
+        with AudioStreamPlayer("mpg123", ["-"]) as audiostream_player,    \
+             MetadataLedDisplayDriver(led_device) as metadata_led_driver, \
+             MetadataFileWriter("metadata.log") as metadata_file_writer:
 
             radioPlayer.audiodata_signal.connect(audiostream_player.play)
-            radioPlayer.metadata_signal.connect(metadata_processor.process)
+            radioPlayer.metadata_signal.connect(metadata_led_driver.process)
+            radioPlayer.metadata_signal.connect(metadata_file_writer.process)
 
             radioPlayer.play() # blocking call
 
