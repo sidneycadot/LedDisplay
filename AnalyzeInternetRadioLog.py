@@ -2,9 +2,7 @@
 
 import re, sys
 
-SIMPLE_ASCII = frozenset(b" !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~")
-
-with open("metadata.log") as f:
+with open("metadata.log", "r") as f:
     lines = f.readlines()
 
 metadata_regexp = re.compile("StreamTitle='(.*)  - (.*) ';StreamUrl='(.*)';")
@@ -33,17 +31,7 @@ for line in lines:
     else:
         timestamp = float("nan")
 
-    metadata = eval(line[21:])
-
-    try:
-        metadata = metadata.decode()
-    except:
-        for c in range(256):
-            if c not in SIMPLE_ASCII:
-                bc = bytes([c])
-                bc_replacement = "<{:02x}>".format(c).encode()
-                metadata = metadata.replace(bc, bc_replacement)
-        metadata = metadata.decode()
+    metadata = line[21:]
 
     if prevsongtitle is not None:
         print("{:12.6f} | {:30} | {}".format(timestamp - prevtimestamp, prevartist, prevsongtitle))
