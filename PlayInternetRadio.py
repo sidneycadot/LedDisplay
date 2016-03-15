@@ -186,6 +186,7 @@ class MetadataDatabaseWriter:
 
         cursor.execute(query)
 
+        self._counter = 0
         self._last_time  = None
         self._last_rowid = None
 
@@ -212,9 +213,15 @@ class MetadataDatabaseWriter:
         if len(metadata) == 0:
             return
 
+        self._counter += 1
+
         cursor = self._conn.cursor()
 
-        if self._last_rowid is not None:
+        # The duration of the first song cannot be determined.
+        # The duration of the second song cannot be reliably calculated
+        #    (because the timestamp of the first song is unreliable).
+
+        if self._counter > 2:
             duration = current_time - self._last_time
             query = "UPDATE metadata SET duration = ? WHERE rowid = ?;"
             cursor.execute(query, (duration, self._last_rowid))
