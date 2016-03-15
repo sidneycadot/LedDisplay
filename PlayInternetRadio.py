@@ -9,11 +9,15 @@ class Signal:
     """
     def __init__(self):
         self._receivers = []
+        self._logger = logging.getLogger("signal")
     def connect(self, receiver):
         self._receivers.append(receiver)
     def emit(self, *args, **kwargs):
         for receiver in self._receivers:
-            receiver(*args, **kwargs)
+            try:
+                receiver(*args, **kwargs)
+            except BaseException as exception:
+                self._logger.error("Exception in signal handler: {}".format(exception))
 
 class AudioStreamPlayer:
     """ A basic audioplayer class that pushes data to a subprocess audio player.
@@ -135,7 +139,7 @@ class MetadataFileWriter:
 
         self._filename = filename
 
-        with open(self._filename, "a") as f:
+        with open(self._filename, "a", encoding = "utf-8") as f:
             print("restart", file = f)
 
     def __enter__(self):
@@ -149,7 +153,7 @@ class MetadataFileWriter:
         if len(metadata) == 0:
             return
 
-        with open(self._filename, "a") as f:
+        with open(self._filename, "a", encoding = "utf-8") as f:
             print("{:20.9f} {}".format(current_time, metadata), file = f)
 
 class InternetRadioPlayer:
