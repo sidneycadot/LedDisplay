@@ -1,8 +1,8 @@
 #! /usr/bin/env python3
 
-import os, time, socket, re, subprocess, logging, math
+import os, time, socket, re, subprocess, logging, math, sqlite3
 
-from LedDisplay import LedDisplay
+#from LedDisplay import LedDisplay
 
 class Signal:
     """ A very lightweight implementation of the Signal/Slot mechanism.
@@ -156,6 +156,71 @@ class MetadataFileWriter:
         with open(self._filename, "a", encoding = "utf-8") as f:
             print("{:20.9f} {}".format(current_time, metadata), file = f)
 
+class MetadataDatabaseWriter:
+
+    def __init__(self, filename):
+
+        self._logger = logging.getLogger("MetadataDatabaseWriter")
+
+        self._logger.debug("Opening database ...")
+        self._conn = sqlite3.connect(filename)
+
+        cursor = self._conn.cursor()
+
+        query = """CREATE TABLE IF NOT EXISTS metadata(
+                    id         INTEGER NOT NULL PRIMARY KEY,
+                    timestamp  REAL    NOT NULL,
+                    duration   REAL        NULL,
+                    metadata   BLOB    NOT NULL
+                );"""
+
+        query = query.split("\n")
+        query[1:] = [q[16:] for q in query[1:]]
+        query = "\n".join(query)
+
+        cursor.execute(query)
+
+        self._last_time  = None
+        self._last_rowid = None
+
+    def __del__(self):
+        if self._conn is not None:
+            self._logger.error("The__del__ method of class MetadataDatabaseWriter was called while the writer was still active. Please use explicit close() method.")
+        self.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        if self._conn is not None:
+            self.close()
+
+    def close(self):
+        self._logger.debug("Closing database ...")
+        self._conn.close()
+        self._conn = None
+
+    def process(self, current_time, metadata):
+
+        if len(metadata) == 0:
+            return
+
+        cursor = self._conn.cursor()
+
+        if self._last_rowid is not None:
+            duration = current_time - self._last_time
+            query = "UPDATE metadata SET duration = ? WHERE rowid = ?;"
+            cursor.execute(query, (duration, self._last_rowid))
+
+        query = "INSERT INTO metadata(timestamp, metadata) VALUES (?, ?);"
+
+        cursor.execute(query, (current_time, metadata))
+
+        self._conn.commit()
+
+        self._last_time  = current_time
+        self._last_rowid = cursor.lastrowid
+
 class InternetRadioPlayer:
 
     def __init__(self, host, port, path):
@@ -286,7 +351,7 @@ class InternetRadioPlayer:
 def main():
 
     logging_format = "%(asctime)s | %(levelname)-10s | %(name)-25s | %(message)s"
-    logging.basicConfig(level = logging.INFO, format = logging_format)
+    logging.basicConfig(level = logging.DEBUG, format = logging_format)
 
     try:
 
@@ -304,17 +369,22 @@ def main():
 
         with AudioStreamPlayer("mpg123", ["-"]) as audiostream_player,    \
              MetadataLedDisplayDriver(led_device) as metadata_led_driver, \
+             MetadataDatabaseWriter("metadata.sqlite3") as metadata_database_writer, \
              MetadataFileWriter("metadata.log") as metadata_file_writer:
 
             radioPlayer.audiodata_signal.connect(audiostream_player.play)
             radioPlayer.metadata_signal.connect(metadata_led_driver.process)
             radioPlayer.metadata_signal.connect(metadata_file_writer.process)
+            radioPlayer.metadata_signal.connect(metadata_database_writer.process)
 
             radioPlayer.play() # blocking call
 
     except KeyboardInterrupt:
 
         logging.info("Quitting due to user request.")
+
+    except BaseException as exception:
+        logging.error("Exception in main(): {}".format(exception))
 
     finally:
 
