@@ -2,7 +2,10 @@
 
 import os, time, socket, re, subprocess, logging, math, sqlite3
 
-#from LedDisplay import LedDisplay
+try:
+    from LedDisplay import LedDisplay
+except:
+    pass # Error while importing
 
 class Signal:
     """ A very lightweight implementation of the Signal/Slot mechanism.
