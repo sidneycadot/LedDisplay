@@ -17,10 +17,7 @@ class Signal:
         self._receivers.append(receiver)
     def emit(self, *args, **kwargs):
         for receiver in self._receivers:
-            try:
-                receiver(*args, **kwargs)
-            except BaseException as exception:
-                self._logger.error("Exception in signal handler: {}".format(exception))
+            receiver(*args, **kwargs)
 
 class AudioStreamPlayer:
     """ A basic audioplayer class that pushes data to a subprocess audio player.
@@ -189,7 +186,7 @@ class MetadataDatabaseWriter:
     def __del__(self):
         if self._conn is not None:
             self._logger.error("The__del__ method of class MetadataDatabaseWriter was called while the writer was still active. Please use explicit close() method.")
-        self.close()
+            self.close()
 
     def __enter__(self):
         return self
@@ -199,6 +196,7 @@ class MetadataDatabaseWriter:
             self.close()
 
     def close(self):
+        assert self._conn is not None
         self._logger.debug("Closing database ...")
         self._conn.close()
         self._conn = None
