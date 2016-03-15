@@ -1,6 +1,6 @@
 #! /usr/bin/env python3
 
-import os, time, socket, re, subprocess, logging, math, sqlite3
+import os, sys, time, socket, re, subprocess, logging, math, sqlite3
 
 try:
     from LedDisplay import LedDisplay
@@ -16,6 +16,8 @@ class Signal:
     def connect(self, receiver):
         self._receivers.append(receiver)
     def emit(self, *args, **kwargs):
+        # Note: if any of the receivers raises a signal,
+        # the other receivers will not be notified.
         for receiver in self._receivers:
             receiver(*args, **kwargs)
 
@@ -41,13 +43,15 @@ class AudioStreamPlayer:
     def __del__(self):
 
         if self._process is not None:
-            self._logger.error("The__del__ method of class AudioStreamPlayer was called while the subprocess was still active. Please use explicit close() method.")
+            self._logger.error("The __del__ method of class AudioStreamPlayer was called while the subprocess was still active. Please use explicit close() method.")
             self.close()
 
     def __enter__(self):
+
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
+
         if self._process is not None:
             self.close()
 
@@ -56,6 +60,7 @@ class AudioStreamPlayer:
         assert self._process is not None
 
         self._logger.debug("Stopping {!r} sub-process.".format(self._executable))
+        self._process.terminate() # ask nicely
         self._process.wait()
         self._process = None
 
@@ -109,6 +114,7 @@ class MetadataLedDisplayDriver:
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
+        # No-op
         pass
 
     def process(self, current_time, metadata):
@@ -185,7 +191,7 @@ class MetadataDatabaseWriter:
 
     def __del__(self):
         if self._conn is not None:
-            self._logger.error("The__del__ method of class MetadataDatabaseWriter was called while the writer was still active. Please use explicit close() method.")
+            self._logger.error("The __del__ method of class MetadataDatabaseWriter was called while the writer was still active. Please use explicit close() method.")
             self.close()
 
     def __enter__(self):
@@ -351,8 +357,13 @@ class InternetRadioPlayer:
 
 def main():
 
+    if "--debug" in sys.argv[1:]:
+        log_level = logging.DEBUG
+    else:
+        log_level = logging.INFO
+
     logging_format = "%(asctime)s | %(levelname)-10s | %(name)-25s | %(message)s"
-    logging.basicConfig(level = logging.DEBUG, format = logging_format)
+    logging.basicConfig(level = logging.INFO, format = logging_format)
 
     try:
 

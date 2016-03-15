@@ -78,7 +78,7 @@ class LedDisplay:
     def __del__(self):
 
         if self._port is not None:
-            self._logger.error("The__del__ method of class LedDisplay was called while the serial port was still open. Please use explicit close() method.")
+            self._logger.error("The __del__ method of class LedDisplay was called while the serial port was still open. Please use explicit close() method.")
             self.close()
 
     def __enter__(self):
