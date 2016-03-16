@@ -132,7 +132,16 @@ class MetadataLedDisplayDriver:
 
         if self._led_device is not None:
 
-            led_message = "<L1><PA><FE><MA><WB><FE><AC><CD>{}          <CG><KD> <KT>".format(title)
+            check_title = title.lower()
+
+            # The "reggae" easter egg
+
+            if ["bob marley" in check_title or "peter tosh" in check_title or "reggae" in check_title:
+                color_directive = "<CR>"
+            else:
+                color_directive = "<CD>"
+
+            led_message = "<L1><PA><FE><MA><WB><FE><AC>{}{}          <CG><KD> <KT>".format(color_directive, title)
 
             with LedDisplay(self._led_device) as led_display:
                 led_display.send(led_message)
