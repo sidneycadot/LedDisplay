@@ -136,7 +136,7 @@ class MetadataLedDisplayDriver:
 
             # The "reggae" easter egg
 
-            if ["bob marley" in check_title or "peter tosh" in check_title or "reggae" in check_title:
+            if ("bob marley" in check_title) or ("peter tosh" in check_title) or ("reggae" in check_title):
                 color_directive = "<CR>"
             else:
                 color_directive = "<CD>"
