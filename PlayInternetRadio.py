@@ -1,6 +1,7 @@
 #! /usr/bin/env python3
 
 import os, sys, time, socket, re, subprocess, logging, math, sqlite3
+from setup_logging import setup_logging
 
 try:
     from LedDisplay import LedDisplay
@@ -373,50 +374,42 @@ class InternetRadioPlayer:
 
 def main():
 
+    host = "pc192.pinguinradio.com"
+    port = 80
+    path = "/"
+
+    led_device = os.getenv("LED_DEVICE")
+
     if "--debug" in sys.argv[1:]:
         log_level = logging.DEBUG
     else:
         log_level = logging.INFO
 
-    logging_format = "%(asctime)s | %(levelname)-10s | %(name)-25s | %(message)s"
-    logging.basicConfig(level = logging.INFO, format = logging_format)
+    log_filename = "PlayInternetRadio_%Y%m%d_%H%M%S.log"
+    log_format = "%(asctime)s | %(levelname)-10s | %(name)-25s | %(message)s"
 
-    try:
+    with setup_logging(logfile_name = log_filename, fmt = log_format, level = log_level):
 
-        #host = "as192.pinguinradio.com"
-        #host = "pu192.pinguinradio.com"
-        host = "pc192.pinguinradio.com"
-        #host = "pcaac.pinguinradio.com"
+        logger = logging.getLogger("main")
 
-        port = 80
-        path = "/"
-
-        radioPlayer = InternetRadioPlayer(host, port, path)
-
-        led_device = os.getenv("LED_DEVICE")
-
-        with AudioStreamPlayer("mpg123", ["-"]) as audiostream_player,    \
+        with AudioStreamPlayer("mpg123", ["-"]) as audiostream_player, \
              MetadataLedDisplayDriver(led_device) as metadata_led_driver, \
              MetadataDatabaseWriter("metadata.sqlite3") as metadata_database_writer, \
              MetadataFileWriter("metadata.log") as metadata_file_writer:
+
+            radioPlayer = InternetRadioPlayer(host, port, path)
 
             radioPlayer.audiodata_signal.connect(audiostream_player.play)
             radioPlayer.metadata_signal.connect(metadata_led_driver.process)
             radioPlayer.metadata_signal.connect(metadata_file_writer.process)
             radioPlayer.metadata_signal.connect(metadata_database_writer.process)
 
-            radioPlayer.play() # blocking call
-
-    except KeyboardInterrupt:
-
-        logging.info("Quitting due to user request.")
-
-    except BaseException as exception:
-        logging.error("Exception in main(): {}".format(exception))
-
-    finally:
-
-        logging.shutdown()
+            try:
+                radioPlayer.play() # blocking call
+            except KeyboardInterrupt:
+                logger.info("Quitting due to user request.")
+            except BaseException as exception:
+                logger.error("Unknown exception while playing: {}".format(exception))
 
 if __name__ == "__main__":
     main()
