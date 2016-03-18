@@ -1,6 +1,6 @@
 #! /usr/bin/env python3
 
-import os, sys, time, socket, re, subprocess, logging, math, sqlite3
+import os, select, sys, time, socket, re, subprocess, logging, math, sqlite3
 from setup_logging import setup_logging
 
 try:
@@ -9,7 +9,7 @@ except:
     pass # Error while importing
 
 class Signal:
-    """ A very lightweight implementation of the Signal/Slot mechanism.
+    """ A lightweight implementation of the Signal/Slot mechanism.
     """
     def __init__(self):
         self._receivers = []
@@ -133,14 +133,16 @@ class MetadataLedDisplayDriver:
 
         if self._led_device is not None:
 
-            check_title = title.lower()
+            # The "reggae" easter egg...
 
-            # The "reggae" easter egg
+            check_title = title.lower()
 
             if ("bob marley" in check_title) or ("peter tosh" in check_title) or ("reggae" in check_title):
                 color_directive = "<CR>"
             else:
                 color_directive = "<CD>"
+
+            # Make led display command.
 
             led_message = "<L1><PA><FE><MA><WB><FE><AC>{}{}          <CG><KD> <KT>".format(color_directive, title)
 
@@ -245,6 +247,9 @@ class MetadataDatabaseWriter:
         self._last_time  = current_time
         self._last_rowid = cursor.lastrowid
 
+class StreamStalledError(RuntimeError):
+    pass
+
 class InternetRadioPlayer:
 
     def __init__(self, host, port, path):
@@ -260,7 +265,9 @@ class InternetRadioPlayer:
 
     def play(self):
 
-        MAX_PACKET_SIZE = 2048 # larger than 1 regular IP packet.
+        SOCKET_RECV_TIMEOUT    =  1.0 # seconds
+        SOCKET_RECV_SIZE       = 4096 # larger than 1 regular IP packet.
+        NO_DATA_THRESHOLD_TIME = 10.0
 
         address = (self._host, self._port)
 
@@ -277,6 +284,7 @@ class InternetRadioPlayer:
             # Read the response header (HTTP-like).
 
             stream_buffer = bytearray()
+            last_data_time = time.time()
 
             in_header = True
             icy_metadata_interval = None
@@ -334,10 +342,6 @@ class InternetRadioPlayer:
                         stream_audio_bytes_until_metadata -= stream_audio_bytes
                     else:
                         # We are expecting a metadata chunk.
-                        current_time = time.time()
-
-                        packet = stream_socket.recv(MAX_PACKET_SIZE)
-                        stream_buffer.extend(packet)
 
                         if len(stream_buffer) == 0:
                             break # We need more data -- at least the metadata chunk length byte.
@@ -352,7 +356,7 @@ class InternetRadioPlayer:
 
                         metadata = metadata.rstrip(b"\0").decode(errors = "replace")
 
-                        self.metadata_signal.emit(current_time, metadata)
+                        self.metadata_signal.emit(last_data_time, metadata)
 
                         # Discard the metadata size byte as well as the metadata itself.
                         del stream_buffer[:1 + metadata_size]
@@ -361,12 +365,21 @@ class InternetRadioPlayer:
                         stream_audio_bytes_until_metadata = icy_metadata_interval
 
                 # Read more data.
-                packet = stream_socket.recv(MAX_PACKET_SIZE)
-                stream_buffer.extend(packet)
 
-        #except BaseException as exception:
-        #    self._logger.exception(exception)
-        #    raise
+                while True:
+                    (rlist, wlist, xlist) = select.select([stream_socket], [], [stream_socket], SOCKET_RECV_TIMEOUT)
+                    select_time = time.time()
+                    assert len(wlist) == 0
+                    assert len(xlist) == 0
+                    if stream_socket in rlist:
+                        break # data available
+                    self._logger.warning("No data received for {:.1f} seconds.".format(select_time - last_data_time))
+                    if select_time - last_data_time > NO_DATA_THRESHOLD_TIME:
+                        raise StreamStalledError()
+
+                last_data_time = select_time
+                packet = stream_socket.recv(SOCKET_RECV_SIZE)
+                stream_buffer.extend(packet)
 
         finally:
 
@@ -408,8 +421,10 @@ def main():
                 radioPlayer.play() # blocking call
             except KeyboardInterrupt:
                 logger.info("Quitting due to user request.")
+            except StreamStalledError:
+                logger.info("Stream has stalled; quitting.")
             except BaseException as exception:
-                logger.error("Unknown exception while playing: {}".format(exception))
+                logger.exception("Unknown exception while playing: {!r}".format(exception))
 
 if __name__ == "__main__":
     main()
