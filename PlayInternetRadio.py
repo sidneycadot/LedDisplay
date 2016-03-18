@@ -73,7 +73,7 @@ class AudioStreamPlayer:
 
         self._bytecount += len(data)
 
-        REPORT_INTERVAL_SECONDS = 30.0
+        REPORT_INTERVAL_SECONDS = 60.0
 
         if current_time - self._last_report_time >= REPORT_INTERVAL_SECONDS:
 
@@ -304,7 +304,7 @@ class InternetRadioPlayer:
                         # Found CR/LF ; extract and process the line.
 
                         # Extract header line from stream buffer and convert it to a string.
-                        headerline = stream_buffer[:idx].decode()
+                        headerline = stream_buffer[:idx].decode(errors = "replace")
 
                         # Discard header line and CR/LF characters from the stream buffer.
                         del stream_buffer[:idx + 2]
@@ -323,16 +323,18 @@ class InternetRadioPlayer:
                             assert icy_content_type is not None
                             stream_audio_bytes_until_metadata = icy_metadata_interval
                             in_header = False
+
                     elif stream_audio_bytes_until_metadata > 0:
 
                         # We should stream audio data.
+
                         if len(stream_buffer) == 0:
                             break # No data available for streaming. Need to read more data.
 
-                        # Determine how mouch of the buffer we should stream.
+                        # Determine how much of the buffer is audio data.
                         stream_audio_bytes = min(stream_audio_bytes_until_metadata, len(stream_buffer))
 
-                        # Emit the data as audio.
+                        # Emit the audio stream data using a signal.
                         self.audiodata_signal.emit(stream_buffer[:stream_audio_bytes])
 
                         # Remove the audio stream data from the stream buffer.
@@ -340,16 +342,18 @@ class InternetRadioPlayer:
 
                         # Decrease the number of bytes until the next metadata chunk.
                         stream_audio_bytes_until_metadata -= stream_audio_bytes
+
                     else:
+
                         # We are expecting a metadata chunk.
 
                         if len(stream_buffer) == 0:
-                            break # We need more data -- at least the metadata chunk length byte.
+                            break # More data needed; at least the metadata chunk length byte.
 
                         metadata_size = 16 * stream_buffer[0]
 
                         if len(stream_buffer) < 1 + metadata_size:
-                            break # We need more data; metadata chunk incomplete.
+                            break # More data needed; metadata chunk incomplete.
 
                         # We have a complete metadata chunk.
                         metadata = stream_buffer[1:1 + metadata_size]
@@ -361,7 +365,7 @@ class InternetRadioPlayer:
                         # Discard the metadata size byte as well as the metadata itself.
                         del stream_buffer[:1 + metadata_size]
 
-                        # Next traversal of data process loop will need to emit audio data
+                        # Next traversal of data processing loop will process audio data.
                         stream_audio_bytes_until_metadata = icy_metadata_interval
 
                 # Read more data.
@@ -372,7 +376,7 @@ class InternetRadioPlayer:
                     assert len(wlist) == 0
                     assert len(xlist) == 0
                     if stream_socket in rlist:
-                        break # data available
+                        break # Data available.
                     self._logger.warning("No data received for {:.1f} seconds.".format(select_time - last_data_time))
                     if select_time - last_data_time > NO_DATA_THRESHOLD_TIME:
                         raise StreamStalledError()
@@ -383,6 +387,7 @@ class InternetRadioPlayer:
 
         finally:
 
+            self._logger.info("Closing stream socket ...")
             stream_socket.close()
 
 def main():
@@ -410,21 +415,34 @@ def main():
              MetadataDatabaseWriter("metadata.sqlite3") as metadata_database_writer, \
              MetadataFileWriter("metadata.log") as metadata_file_writer:
 
-            radioPlayer = InternetRadioPlayer(host, port, path)
+            RETRY_INTERVAL = 5.0
 
-            radioPlayer.audiodata_signal.connect(audiostream_player.play)
-            radioPlayer.metadata_signal.connect(metadata_led_driver.process)
-            radioPlayer.metadata_signal.connect(metadata_file_writer.process)
-            radioPlayer.metadata_signal.connect(metadata_database_writer.process)
+            while True:
 
-            try:
-                radioPlayer.play() # blocking call
-            except KeyboardInterrupt:
-                logger.info("Quitting due to user request.")
-            except StreamStalledError:
-                logger.info("Stream has stalled; quitting.")
-            except BaseException as exception:
-                logger.exception("Unknown exception while playing: {!r}".format(exception))
+                try:
+
+                    radioPlayer = InternetRadioPlayer(host, port, path)
+
+                    radioPlayer.audiodata_signal.connect(audiostream_player.play)
+                    radioPlayer.metadata_signal.connect(metadata_led_driver.process)
+                    radioPlayer.metadata_signal.connect(metadata_file_writer.process)
+                    radioPlayer.metadata_signal.connect(metadata_database_writer.process)
+
+                    radioPlayer.play() # blocking call
+
+                except KeyboardInterrupt:
+                    logger.info("Quitting by user request.")
+                    break
+                except socket.gaierror as exception:
+                    logger.error("getaddrinfo() error: {}".format(exception))
+                except StreamStalledError:
+                    logger.error("Stream has stalled; unable to play.")
+                except BaseException as exception:
+                    logger.exception("Unknown exception: {!r}".format(exception))
+
+                logger.info("Sleeping for {} seconds before retry ...".format(RETRY_INTERVAL))
+                time.sleep(RETRY_INTERVAL)
+                # Next traversal of loop attempts new connection.
 
 if __name__ == "__main__":
     main()
