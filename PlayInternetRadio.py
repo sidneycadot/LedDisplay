@@ -135,12 +135,12 @@ class MetadataLedDisplayDriver:
 
             # The "reggae" easter egg...
 
-            check_title = title.lower()
+            reggae_triggers = "Bob Marley, Peter Tosh, Gregory Isaacs, Tenor Saw, reggae"
 
-            if ("bob marley" in check_title) or ("peter tosh" in check_title) or ("reggae" in check_title):
-                color_directive = "<CR>"
+            if any(r.strip().lower() in title.lower() for r in reggae_triggers.split(",")):
+                color_directive = "<CR>" # reggae colors
             else:
-                color_directive = "<CD>"
+                color_directive = "<CD>" # regular colors
 
             # Make led display command.
 
