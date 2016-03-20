@@ -140,11 +140,11 @@ class MetadataLedDisplayDriver:
             if any(r.strip().lower() in title.lower() for r in reggae_triggers.split(",")):
                 color_directive = "<CR>" # reggae colors
             else:
-                color_directive = "<CD>" # regular colors
+                color_directive = "<CG>" # regular colors
 
             # Make led display command.
 
-            led_message = "<L1><PA><FE><MA><WB><FE><AC>{}{}          <CG><KD> <KT>".format(color_directive, title)
+            led_message = "<L1><PA><FE><MA><WB><FE><AC>{}{}          <CD><KD> <KT>".format(color_directive, title.encode("ASCII", errors = "replace").decode())
 
             with LedDisplay(self._led_device) as led_display:
                 led_display.send(led_message)
