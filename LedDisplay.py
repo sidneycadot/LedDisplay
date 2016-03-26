@@ -3,11 +3,19 @@
 
 # The device has 16 elements of 7 rows x 5 columns == 7 rows x 80 columns
 
-import serial, operator, datetime, functools, logging
+import serial, operator, datetime, functools, re, logging
 
 class CommunicationError(Exception):
     """This exception is raised if a communication error is detected."""
     pass
+
+Replacements = {
+        "€" : "<U00>",
+        "↑" : "<U01>",
+        "↓" : "<U02>",
+        "→" : "<U26>",
+        "←" : "<U27>"
+    }
 
 class LedDisplay:
 
@@ -58,10 +66,16 @@ class LedDisplay:
         raise ValueError("{} is not a valid graphicsPage.".format(graphicsPage))
 
     @staticmethod
-    def _checkGraphicsBlock(graphics):
+    def _checkGraphicsBlock(graphicsBlock):
+        if isinstance(graphicsBlock, int) and (1 <= graphicsBlock <= 8):
+            return graphicsBlock
+        raise ValueError("{} is not a valid graphics block.".format(graphicsBlock))
+
+    @staticmethod
+    def _checkGraphics(graphics):
         if isinstance(graphics, str) and re.match("^[RGBO]{224}$", graphics):
             return graphics
-        raise ValueError("{} is not a valid graphics block.".format(graphics))
+        raise ValueError("{} is not valid graphics data.".format(graphics))
 
     def __init__(self, device, device_id = 1, timeout = 1.0):
 
@@ -100,9 +114,19 @@ class LedDisplay:
     def send(self, data_packet, max_retry = DEFAULT_RETRY):
         """Assemble standard packet and send command."""
 
-        checksum = functools.reduce(operator.__xor__, map(ord, data_packet), 0)
+        if isinstance(data_packet, str):
+            for (a, b) in Replacements.items():
+                data_packet = data_packet.replace(a, b)
+            data_packet = data_packet.encode("ASCII")
 
-        command = "<ID{:02X}>{}{:02X}<E>".format(self._device_id, data_packet, checksum).encode("ASCII")
+        assert isinstance(data_packet, bytes)
+
+        checksum = functools.reduce(operator.__xor__, data_packet, 0)
+
+        command_prefix = "<ID{:02X}>".format(self._device_id).encode()
+        command_suffix = "{:02X}<E>".format(checksum).encode()
+
+        command = command_prefix + data_packet + command_suffix
 
         expected_response = "ACK".encode("ASCII")
 
@@ -309,10 +333,13 @@ class LedDisplay:
         #
         # E.g., to specify 4 horizontal pixels with colors RED, BLACK, ORANGE, RED translates to
         # binary 10001110, or a byte with value 0x8e.
-
-        # A graphics block is actually specified as an 8-rows x 32 columns image; the last row is not used.
-        # This is the order of the bytes used. Each byte specifies 4 adjacent pixels, as explained above.
-
+        #
+        # A graphics block is actually specified transmitted an 8 rows x 32 columns image of pixels;
+        # the last row is not used. The 8x32 pixel image is encoded into 64 binary bytes,
+        #
+        # This is the order of the bytes used. Each byte specifies 4 adjacent pixels, which
+        # corresponds to the example above.
+        #
         #  0   1  16  17  32  33  48  49
         #  2   3  18  19  34  35  50  51
         #  4   5  20  21  36  37  52  53
@@ -322,18 +349,24 @@ class LedDisplay:
         # 12  13  28  29  44  45  60  61
         # 14  15  30  31  46  47  62  63 --> pixels of this row (row 8) are not used.
         #
-        # We expect the graphics specified in a string of length 7x32, consisting of the letters "G", "B", "O", "R",
-        # for Green, Black, Orange, and Red, respectively.
+        # We expect the graphics specified in a string of length 7x32 (== 224), consisting
+        # of the letters "B", "G", "R", "O", for Black, Green, Red, and Orange, respectively.
+
+        graphics = graphics.replace(".", "B")
 
         self._checkGraphics(graphics)
 
         gr = []
         for i in range(64):
+
+            # Determine (px, py) as coordinates pointing into the 'graphics' array.
+
             px = (i % 2) + (i // 16) * 2
             # 0 1 0 1 0 1 0 1 0 1 0 1 0 1 0 1
             # 2 3 2 3 2 3 2 3 2 3 2 3 2 3 2 3
             # 4 5 4 5 4 5 4 5 4 5 4 5 4 5 4 5
             # 6 7 6 7 6 7 6 7 6 7 6 7 6 7 6 7
+
             py = (i // 2) % 8
             # 0 0 1 1 2 2 3 3 4 4 5 5 6 6 7 7
             # 0 0 1 1 2 2 3 3 4 4 5 5 6 6 7 7
@@ -349,13 +382,15 @@ class LedDisplay:
             for p in pixels:
                 v *= 4
                 if p in "GO": v += 1
-                if p == "RO": v += 2
+                if p in "RO": v += 2
 
             gr.append(v)
 
-        gr = "".join(["%c" % g for g in gr])
+        print("v -->", gr)
 
-        command = "<G%s%d>%s" % (self._checkGraphicsPage(graphicsPage), self._checkGraphicsBlock(graphicsBlock), gr)
+        command_prefix = "<G{}{}>".format(self._checkGraphicsPage(graphicsPage), self._checkGraphicsBlock(graphicsBlock)).encode("ASCII")
+        command = command_prefix + bytes(gr)
+
         self.send(command)
 
     def deletePage(self, line, page):
