@@ -2,24 +2,26 @@
 
 import re, sys
 
-with open("metadata.log", "r") as f:
-    lines = f.readlines()
+def read_log(filename):
 
-metadata_regexp = re.compile("StreamTitle='(.*)  - (.*) ';StreamUrl='(.*)';")
+    with open("metadata.log", "r") as f:
+        lines = f.readlines()
 
-prevartist     = None
-prevsongtitle  = None
-prevtimestamp  = None
+    metadata_regexp = re.compile("StreamTitle='(.*)  - (.*) ';StreamUrl='(.*)';")
 
-trust_timestamp = False
+    prevartist     = None
+    prevsongtitle  = None
+    prevtimestamp  = None
 
-for line in lines:
+    trust_timestamp = False
 
-    line = line.rstrip()
+    for line in lines:
 
-    if line == "restart":
-        if prevsongtitle is not None:
-            print("{:12.6f} | {:30} | {}".format(float("nan"), prevartist, prevsongtitle))
+        line = line.rstrip()
+
+        if line == "restart":
+            if prevsongtitle is not None:
+                print("{:12.6f} | {:30} | {}".format(float("nan"), prevartist, prevsongtitle))
         trust_timestamp = None
         prevartist    = None
         prevsongtitle = None

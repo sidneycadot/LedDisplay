@@ -1,4 +1,4 @@
-#! /usr/bin/env python
+#! /usr/bin/env python3
 
 import sys
 from LedDisplay import LedDisplay
@@ -11,7 +11,7 @@ def main():
         if arg.startswith("--device="):
             device = arg[9:]
 
-    ledz = LedDisplay(device, noisy = True)
+    ledz = LedDisplay(device)
 
     ledz.setBrightnessLevel("A")
     ledz.setRealtimeClock()
