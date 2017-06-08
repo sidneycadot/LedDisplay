@@ -1,25 +1,35 @@
 #! /usr/bin/env python3
 
+import logging
 import sys
+from setup_logging import setup_logging
 from LedDisplay import LedDisplay
 
 def main():
 
-    device = "/dev/ttyUSB0"
+    if "--debug" in sys.argv[1:]:
+        log_level = logging.DEBUG
+    else:
+        log_level = logging.INFO
 
-    for arg in sys.argv[1:]:
-        if arg.startswith("--device="):
-            device = arg[9:]
+    log_format = "%(asctime)s | %(levelname)-10s | %(name)-25s | %(message)s"
 
-    ledz = LedDisplay(device)
+    with setup_logging(logfile_name = None, fmt = log_format, level = log_level):
 
-    ledz.setBrightnessLevel("A")
-    ledz.setRealtimeClock()
-    ledz.setSchedule("A", "A")
-    ledz.send("<L1><PA><FA><MA><WZ><FA><AC><CD> <KD> <KT>")
+        device = "/dev/ttyUSB0"
 
-    ledz.close()
+        for arg in sys.argv[1:]:
+            if arg.startswith("--device="):
+                device = arg[9:]
+
+        ledz = LedDisplay(device)
+
+        ledz.setBrightnessLevel("A")
+        ledz.setRealtimeClock()
+        ledz.setSchedule("A", "A")
+        ledz.send("<L1><PA><FA><MA><WZ><FA><AC><CD> <KD> <KT>")
+
+        ledz.close()
 
 if __name__ == "__main__":
     main()
-
